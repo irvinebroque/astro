@@ -45,7 +45,7 @@ export class AstroD1Backend extends DurableObject<Env> {
 
 		// If rendering discovers a write on a replica, replay this clean request on
 		// the primary. The active request body may already be consumed by then.
-		const replayRequest = request.clone();
+		const replayRequest = d1Ctx.primaryStub ? request.clone() : null;
 		try {
 			await waitForD1Bookmark(this.ctx, request);
 			const response = await renderAstroRequest(request, this.env, createD1CfContext(this.ctx), {
@@ -53,7 +53,7 @@ export class AstroD1Backend extends DurableObject<Env> {
 			});
 			return await withD1Bookmark(this.ctx, response);
 		} catch (error) {
-			if (d1Ctx.primaryStub && isD1PrimaryReroute(error)) {
+			if (d1Ctx.primaryStub && replayRequest && isD1PrimaryReroute(error)) {
 				return d1Ctx.primaryStub.fetch(replayRequest as unknown as RequestInfo);
 			}
 			throw error;

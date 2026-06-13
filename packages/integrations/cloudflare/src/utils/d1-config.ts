@@ -22,7 +22,7 @@ export interface D1BackendServiceOptions {
 	/** Maps an incoming request to a logical SQLite-backed object database. */
 	objectName: D1ObjectNameFunction;
 
-	/** Enables D1 read replicas for objects created by this backend service. */
+	/** Configures D1 read replicas. Enabled by default; set to false to opt out. */
 	readReplication?: D1ReadReplicationConfig | false;
 
 	/** Routes known write-heavy routes to the primary before rendering. */
@@ -53,7 +53,44 @@ export function isSerializableObjectNameFunction(fn: D1ObjectNameFunction): bool
 		return false;
 	}
 
-	return /^function\b/.test(source) || /^(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/.test(source);
+	return /^function(?:\s|\()/.test(source) || /^(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/.test(source);
+}
+
+function normalizeReadReplication(
+	readReplication: D1BackendServiceOptions['readReplication'],
+): D1ReadReplicationConfig | null {
+	if (readReplication === false) {
+		return null;
+	}
+
+	if (readReplication === undefined) {
+		return { mode: 'auto' };
+	}
+
+	if (!readReplication || typeof readReplication !== 'object' || readReplication.mode !== 'auto') {
+		throw new Error(
+			'Cloudflare D1 backendService.readReplication must be false or { mode: "auto" }.',
+		);
+	}
+
+	return { mode: 'auto' };
+}
+
+function normalizePrimaryOnlyRoutes(
+	primaryOnlyRoutes: D1BackendServiceOptions['primaryOnlyRoutes'],
+): string[] {
+	if (primaryOnlyRoutes === undefined) {
+		return [];
+	}
+
+	if (
+		!Array.isArray(primaryOnlyRoutes) ||
+		primaryOnlyRoutes.some((route) => typeof route !== 'string')
+	) {
+		throw new Error('Cloudflare D1 backendService.primaryOnlyRoutes must be an array of strings.');
+	}
+
+	return [...primaryOnlyRoutes];
 }
 
 export function normalizeD1BackendService(
@@ -85,6 +122,12 @@ export function normalizeD1BackendService(
 		);
 	}
 
+	if (typeof backendService.objectName !== 'function') {
+		throw new Error(
+			'Cloudflare D1 backendService.objectName must be a synchronous plain function or arrow function that can run in the Workers runtime.',
+		);
+	}
+
 	if (!isSerializableObjectNameFunction(backendService.objectName)) {
 		throw new Error(
 			'Cloudflare D1 backendService.objectName must be a synchronous plain function or arrow function that can run in the Workers runtime.',
@@ -95,8 +138,7 @@ export function normalizeD1BackendService(
 		bindingName,
 		className,
 		objectName: backendService.objectName,
-		readReplication:
-			backendService.readReplication === false ? null : (backendService.readReplication ?? null),
-		primaryOnlyRoutes: backendService.primaryOnlyRoutes ?? [],
+		readReplication: normalizeReadReplication(backendService.readReplication),
+		primaryOnlyRoutes: normalizePrimaryOnlyRoutes(backendService.primaryOnlyRoutes),
 	};
 }

@@ -7,6 +7,7 @@ export default defineConfig({
 			backendService: {
 				objectName: ({ request }) => `site:${new URL(request.url).hostname}`,
 				primaryOnlyRoutes: ['/admin/**'],
+				readReplication: false,
 			},
 		},
 	}),

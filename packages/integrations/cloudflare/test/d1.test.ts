@@ -30,8 +30,46 @@ describe('D1 helpers', () => {
 			assert.equal(config?.bindingName, DEFAULT_D1_BACKEND_BINDING_NAME);
 			assert.equal(config?.className, DEFAULT_D1_BACKEND_CLASS_NAME);
 			assert.equal(config?.objectName, objectName);
-			assert.equal(config?.readReplication, null);
+			assert.deepEqual(config?.readReplication, { mode: 'auto' });
 			assert.deepEqual(config?.primaryOnlyRoutes, []);
+		});
+
+		it('opts out of read replication when configured false', () => {
+			const config = normalizeD1BackendService({
+				backendService: {
+					objectName: () => 'site:example.com',
+					readReplication: false,
+				},
+			});
+
+			assert.equal(config?.readReplication, null);
+		});
+
+		it('normalizes read replication and primary-only routes', () => {
+			const config = normalizeD1BackendService({
+				backendService: {
+					objectName: () => 'site:example.com',
+					readReplication: { mode: 'auto', ignored: true } as any,
+					primaryOnlyRoutes: ['/admin/**'],
+				},
+			});
+
+			assert.deepEqual(config?.readReplication, { mode: 'auto' });
+			assert.deepEqual(config?.primaryOnlyRoutes, ['/admin/**']);
+		});
+
+		it('rejects missing or non-function objectName config from JavaScript users', () => {
+			assert.throws(
+				() => normalizeD1BackendService({ backendService: {} as any }),
+				/synchronous plain function/,
+			);
+			assert.throws(
+				() =>
+					normalizeD1BackendService({
+						backendService: { objectName: 'site:example.com' as any },
+					}),
+				/synchronous plain function/,
+			);
 		});
 
 		it('rejects invalid binding and class names', () => {
@@ -72,6 +110,63 @@ describe('D1 helpers', () => {
 						backendService: { objectName: Date.now as any },
 					}),
 				/synchronous plain function/,
+			);
+		});
+
+		it('rejects generator objectName functions', () => {
+			const generatorObjectName = function* objectName() {
+				yield 'site:example.com';
+			};
+
+			assert.throws(
+				() =>
+					normalizeD1BackendService({
+						backendService: { objectName: generatorObjectName as any },
+					}),
+				/synchronous plain function/,
+			);
+		});
+
+		it('rejects invalid readReplication config from JavaScript users', () => {
+			assert.throws(
+				() =>
+					normalizeD1BackendService({
+						backendService: { objectName: () => 'site:example.com', readReplication: true as any },
+					}),
+				/must be false or \{ mode: "auto" \}/,
+			);
+			assert.throws(
+				() =>
+					normalizeD1BackendService({
+						backendService: {
+							objectName: () => 'site:example.com',
+							readReplication: { mode: 'manual' } as any,
+						},
+					}),
+				/must be false or \{ mode: "auto" \}/,
+			);
+		});
+
+		it('rejects invalid primaryOnlyRoutes config from JavaScript users', () => {
+			assert.throws(
+				() =>
+					normalizeD1BackendService({
+						backendService: {
+							objectName: () => 'site:example.com',
+							primaryOnlyRoutes: '/admin/**' as any,
+						},
+					}),
+				/primaryOnlyRoutes must be an array of strings/,
+			);
+			assert.throws(
+				() =>
+					normalizeD1BackendService({
+						backendService: {
+							objectName: () => 'site:example.com',
+							primaryOnlyRoutes: ['/admin/**', 123] as any,
+						},
+					}),
+				/primaryOnlyRoutes must be an array of strings/,
 			);
 		});
 	});
@@ -115,7 +210,8 @@ describe('D1 helpers', () => {
 					{
 						bindingName: 'AstroD1Backend',
 						className: 'AstroD1Backend',
-						objectName: ({ request }) => `site:${new URL(request.url).hostname}`,
+						objectName: ({ request }: { request: Request }) =>
+							`site:${new URL(request.url).hostname}`,
 						readReplication: null,
 						primaryOnlyRoutes: [],
 					},
@@ -175,6 +271,7 @@ describe('D1 helpers', () => {
 				isMutationSql('WITH recent AS (SELECT * FROM posts) SELECT * FROM recent'),
 				true,
 			);
+			assert.equal(isMutationSql('/* unfinished comment'), true);
 		});
 	});
 

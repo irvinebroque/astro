@@ -20,7 +20,6 @@ export default defineConfig({
     d1: {
       backendService: {
         objectName: ({ request }) => `site:${new URL(request.url).hostname}`,
-        readReplication: { mode: 'auto' },
         primaryOnlyRoutes: ['/admin/**'],
       },
     },
@@ -69,8 +68,9 @@ export async function POST({ request, locals }) {
 
 Notes:
 
-- `objectName()` defines the logical database boundary and must return a non-empty string.
+- `objectName()` defines the logical database boundary and must return a non-empty string. It is serialized into the Worker entrypoint, so it must be self-contained and cannot depend on variables from `astro.config`.
 - The generated binding and class name are `AstroD1Backend`.
+- D1 read replication is enabled by default. Set `readReplication: false` to opt out.
 - `primaryOnlyRoutes` avoids an extra replica hop for known write-heavy routes.
 - Writes discovered on replicas are rerouted to the primary before SQL runs.
 - `Astro.locals.cfContext` remains available in D1-rendered routes.

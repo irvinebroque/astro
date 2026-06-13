@@ -28,6 +28,7 @@ describe('D1 backend service', () => {
 		assert.deepEqual(wrangler.migrations, [
 			{ tag: 'astro-d1-v1', new_sqlite_classes: ['AstroD1Backend'] },
 		]);
+		assert.ok(!wrangler.compatibility_flags.includes('replica_routing'));
 	});
 
 	it('renders Astro pages inside the D1 backend object', async () => {

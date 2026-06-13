@@ -89,7 +89,7 @@ export function matchPrimaryOnlyRoute(pathname: string, pattern: string): boolea
 export function isMutationSql(sql: string): boolean {
 	const token = getFirstSqlToken(sql);
 	if (!token) {
-		return false;
+		return true;
 	}
 
 	// Be conservative: unknown statements should run on the primary. This keeps
