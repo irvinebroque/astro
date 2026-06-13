@@ -32,6 +32,7 @@ The generated Durable Object uses the current Wrangler configuration shape:
 
 ```jsonc
 {
+  "compatibility_flags": ["experimental", "replica_routing"],
   "durable_objects": {
     "bindings": [{ "name": "AstroD1Backend", "class_name": "AstroD1Backend" }],
   },
@@ -74,6 +75,7 @@ Notes:
 - Writes discovered on replicas are rerouted to the primary before SQL runs.
 - `Astro.locals.cfContext` remains available in D1-rendered routes.
 - Custom Worker entrypoints must re-export `AstroD1Backend` from `@astrojs/cloudflare/entrypoints/server`.
+- D1 read replication currently relies on experimental Durable Objects APIs, so generated Wrangler config includes `compatibility_flags = ["experimental", "replica_routing"]` when `readReplication` is enabled.
 
 ## Support
 

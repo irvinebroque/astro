@@ -7,6 +7,7 @@ import {
 export const DEFAULT_SESSION_KV_BINDING_NAME = 'SESSION';
 export const DEFAULT_IMAGES_BINDING_NAME = 'IMAGES';
 export const DEFAULT_ASSETS_BINDING_NAME = 'ASSETS';
+export const D1_BACKEND_COMPATIBILITY_FLAGS = ['experimental', 'replica_routing'] as const;
 
 // Default compatibility date used when the user doesn't set one in their wrangler config.
 // The @cloudflare/vite-plugin falls back to today's date, but that can exceed the maximum
@@ -93,14 +94,29 @@ function getD1BackendWorkerConfig(
 		return {};
 	}
 
-	const hasBinding = config.durable_objects?.bindings?.some(
+	const existingBinding = config.durable_objects?.bindings?.find(
 		(binding: DurableObjectBinding) =>
-			binding.name === d1BackendService.bindingName ||
+			binding.name === d1BackendService.bindingName &&
 			binding.class_name === d1BackendService.className,
+	);
+	const conflictingBinding = config.durable_objects?.bindings?.find(
+		(binding: DurableObjectBinding) =>
+			(binding.name === d1BackendService.bindingName ||
+				binding.class_name === d1BackendService.className) &&
+			binding !== existingBinding,
 	);
 	const hasMigration = config.migrations?.some((migration) =>
 		migration.new_sqlite_classes?.includes(d1BackendService.className),
 	);
+	const compatibilityFlags = d1BackendService.readReplication
+		? getMissingD1CompatibilityFlags(config)
+		: undefined;
+
+	if (conflictingBinding) {
+		throw new Error(
+			`Cloudflare D1 backend Durable Object binding must use both name "${d1BackendService.bindingName}" and class_name "${d1BackendService.className}".`,
+		);
+	}
 
 	if (!hasMigration) {
 		config.migrations = [
@@ -113,7 +129,8 @@ function getD1BackendWorkerConfig(
 	}
 
 	return {
-		durable_objects: hasBinding
+		compatibility_flags: compatibilityFlags,
+		durable_objects: existingBinding
 			? undefined
 			: {
 					bindings: [
@@ -124,4 +141,13 @@ function getD1BackendWorkerConfig(
 					],
 				},
 	};
+}
+
+function getMissingD1CompatibilityFlags(
+	config: Partial<WorkerConfig>,
+): WorkerConfig['compatibility_flags'] | undefined {
+	const existingFlags = new Set(config.compatibility_flags ?? []);
+	const flags = D1_BACKEND_COMPATIBILITY_FLAGS.filter((flag) => !existingFlags.has(flag));
+
+	return flags.length > 0 ? flags : undefined;
 }
