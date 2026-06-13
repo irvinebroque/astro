@@ -111,9 +111,11 @@ export interface Options
 	imagesBindingName?: string;
 
 	/**
-	 * Configures D1 application-object support. When enabled, server-rendered Astro
-	 * routes are routed through a SQLite-backed Durable Object and receive
-	 * `Astro.locals.d1` backed by `ctx.storage.sql`.
+	 * Enables D1 storage for server-rendered Astro routes.
+	 *
+	 * Set to `true` for one app-wide database. Use `partitionBy: 'hostname'`
+	 * to give each hostname its own database, and `writeRoutes` for routes that
+	 * are known to write.
 	 */
 	d1?: D1Options;
 

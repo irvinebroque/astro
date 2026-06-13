@@ -20,7 +20,38 @@ describe('D1 helpers', () => {
 	describe('normalizeD1BackendService', () => {
 		it('returns null when no D1 backend service is configured', () => {
 			assert.equal(normalizeD1BackendService(undefined), null);
-			assert.equal(normalizeD1BackendService({}), null);
+			assert.equal(normalizeD1BackendService(false), null);
+		});
+
+		it('enables D1 with one app-wide database', () => {
+			const config = normalizeD1BackendService(true);
+
+			assert.equal(config?.bindingName, DEFAULT_D1_BACKEND_BINDING_NAME);
+			assert.equal(config?.className, DEFAULT_D1_BACKEND_CLASS_NAME);
+			assert.equal(getD1ObjectName(config!, new Request('https://example.com/')), 'default');
+			assert.equal(config?.readReplication, null);
+			assert.deepEqual(config?.primaryOnlyRoutes, []);
+		});
+
+		it('enables D1 with default options from an empty object', () => {
+			const config = normalizeD1BackendService({});
+
+			assert.equal(getD1ObjectName(config!, new Request('https://example.com/')), 'default');
+			assert.equal(config?.readReplication, null);
+			assert.deepEqual(config?.primaryOnlyRoutes, []);
+		});
+
+		it('normalizes hostname partitioning and write routes', () => {
+			const config = normalizeD1BackendService({
+				partitionBy: 'hostname',
+				writeRoutes: ['/admin/**'],
+			});
+
+			assert.equal(
+				getD1ObjectName(config!, new Request('https://example.com/admin/posts')),
+				'site:example.com',
+			);
+			assert.deepEqual(config?.primaryOnlyRoutes, ['/admin/**']);
 		});
 
 		it('normalizes default binding and class names', () => {
@@ -167,6 +198,29 @@ describe('D1 helpers', () => {
 						},
 					}),
 				/primaryOnlyRoutes must be an array of strings/,
+			);
+		});
+
+		it('rejects invalid simple D1 config from JavaScript users', () => {
+			assert.throws(
+				() => normalizeD1BackendService({ partitionBy: 'pathname' as any }),
+				/partitionBy must be "hostname"/,
+			);
+			assert.throws(
+				() => normalizeD1BackendService({ writeRoutes: '/admin/**' as any }),
+				/writeRoutes must be an array of strings/,
+			);
+			assert.throws(
+				() => normalizeD1BackendService({ writeRoutes: ['/admin/**', 123] as any }),
+				/writeRoutes must be an array of strings/,
+			);
+			assert.throws(
+				() =>
+					normalizeD1BackendService({
+						backendService: { objectName: () => 'site:example.com' },
+						writeRoutes: ['/admin/**'],
+					} as any),
+				/cannot mix backendService/,
 			);
 		});
 	});

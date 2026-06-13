@@ -12,6 +12,8 @@ export type D1ReadReplicationConfig = {
 	mode: 'auto';
 };
 
+export type D1PartitionBy = 'hostname';
+
 export interface D1BackendServiceOptions {
 	/** Durable Object binding name available on `env`. */
 	bindingName?: string;
@@ -29,6 +31,24 @@ export interface D1BackendServiceOptions {
 	primaryOnlyRoutes?: string[];
 }
 
+export interface D1SimpleOptions {
+	/** Partitions the D1 backend by request properties. Defaults to one database for the app. */
+	partitionBy?: D1PartitionBy;
+
+	/** Routes known write-heavy routes directly to the writable database. */
+	writeRoutes?: string[];
+
+	backendService?: never;
+}
+
+export interface D1AdvancedOptions {
+	/** Low-level D1 backend configuration. Most apps should use `d1: true` instead. */
+	backendService: D1BackendServiceOptions;
+
+	partitionBy?: never;
+	writeRoutes?: never;
+}
+
 export interface D1BackendServiceConfig {
 	bindingName: string;
 	className: string;
@@ -37,9 +57,7 @@ export interface D1BackendServiceConfig {
 	primaryOnlyRoutes: string[];
 }
 
-export interface D1Options {
-	backendService?: D1BackendServiceOptions;
-}
+export type D1Options = boolean | D1SimpleOptions | D1AdvancedOptions;
 
 const IDENTIFIER_RE = /^[A-Za-z_$][\w$]*$/;
 
@@ -93,14 +111,77 @@ function normalizePrimaryOnlyRoutes(
 	return [...primaryOnlyRoutes];
 }
 
+function normalizeWriteRoutes(writeRoutes: D1SimpleOptions['writeRoutes']): string[] {
+	if (writeRoutes === undefined) {
+		return [];
+	}
+
+	if (!Array.isArray(writeRoutes) || writeRoutes.some((route) => typeof route !== 'string')) {
+		throw new Error('Cloudflare D1 writeRoutes must be an array of strings.');
+	}
+
+	return [...writeRoutes];
+}
+
+function getDefaultD1ObjectName(): string {
+	return 'default';
+}
+
+function getHostnameD1ObjectName({ request }: D1ObjectNameContext): string {
+	return `site:${new URL(request.url).hostname}`;
+}
+
+function normalizeSimpleD1BackendService(options: true | D1SimpleOptions): D1BackendServiceConfig {
+	const partitionBy = options === true ? undefined : options.partitionBy;
+
+	if (partitionBy !== undefined && partitionBy !== 'hostname') {
+		throw new Error('Cloudflare D1 partitionBy must be "hostname".');
+	}
+
+	return {
+		bindingName: DEFAULT_D1_BACKEND_BINDING_NAME,
+		className: DEFAULT_D1_BACKEND_CLASS_NAME,
+		objectName: partitionBy === 'hostname' ? getHostnameD1ObjectName : getDefaultD1ObjectName,
+		readReplication: null,
+		primaryOnlyRoutes: normalizeWriteRoutes(options === true ? undefined : options.writeRoutes),
+	};
+}
+
 export function normalizeD1BackendService(
 	options: D1Options | undefined,
 ): D1BackendServiceConfig | null {
-	const backendService = options?.backendService;
-	if (!backendService) {
+	if (options === undefined || options === false) {
 		return null;
 	}
 
+	if (options === true) {
+		return normalizeSimpleD1BackendService(options);
+	}
+
+	if (!options || typeof options !== 'object') {
+		throw new Error('Cloudflare D1 config must be true or an object.');
+	}
+
+	if ('backendService' in options) {
+		if ('partitionBy' in options || 'writeRoutes' in options) {
+			throw new Error(
+				'Cloudflare D1 config cannot mix backendService with partitionBy or writeRoutes.',
+			);
+		}
+
+		if (!options.backendService) {
+			return null;
+		}
+
+		return normalizeAdvancedD1BackendService(options.backendService);
+	}
+
+	return normalizeSimpleD1BackendService(options);
+}
+
+function normalizeAdvancedD1BackendService(
+	backendService: D1BackendServiceOptions,
+): D1BackendServiceConfig {
 	const bindingName = backendService.bindingName ?? DEFAULT_D1_BACKEND_BINDING_NAME;
 	const className = backendService.className ?? DEFAULT_D1_BACKEND_CLASS_NAME;
 

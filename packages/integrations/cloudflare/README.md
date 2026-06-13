@@ -6,9 +6,36 @@ An SSR adapter for use with Cloudflare Workers targets. Write your code in Astro
 
 Read the [`@astrojs/cloudflare` docs][docs]
 
-## D1 backend service
+## D1
 
 The Cloudflare adapter can run server-rendered Astro routes inside a SQLite-backed Durable Object. This lets pages and endpoints use D1 through `Astro.locals.d1` or `locals.d1` while static assets stay in the front Worker.
+
+For most apps, enable D1 with `d1: true`:
+
+```js
+import { defineConfig } from 'astro/config';
+import cloudflare from '@astrojs/cloudflare';
+
+export default defineConfig({
+  output: 'server',
+  adapter: cloudflare({
+    d1: true,
+  }),
+});
+```
+
+The generated Durable Object uses the current Wrangler configuration shape:
+
+```jsonc
+{
+  "durable_objects": {
+    "bindings": [{ "name": "AstroD1Backend", "class_name": "AstroD1Backend" }],
+  },
+  "migrations": [{ "tag": "astro-d1-v1", "new_sqlite_classes": ["AstroD1Backend"] }],
+}
+```
+
+Advanced apps can partition data by hostname and identify known write-heavy routes:
 
 ```js
 import { defineConfig } from 'astro/config';
@@ -18,25 +45,11 @@ export default defineConfig({
   output: 'server',
   adapter: cloudflare({
     d1: {
-      backendService: {
-        objectName: ({ request }) => `site:${new URL(request.url).hostname}`,
-        primaryOnlyRoutes: ['/admin/**'],
-      },
+      partitionBy: 'hostname',
+      writeRoutes: ['/admin/**'],
     },
   }),
 });
-```
-
-The generated Durable Object uses the current Wrangler configuration shape:
-
-```jsonc
-{
-  "compatibility_flags": ["experimental", "replica_routing"],
-  "durable_objects": {
-    "bindings": [{ "name": "AstroD1Backend", "class_name": "AstroD1Backend" }],
-  },
-  "migrations": [{ "tag": "astro-d1-v1", "new_sqlite_classes": ["AstroD1Backend"] }],
-}
 ```
 
 Use `Astro.locals.d1` in server-rendered pages:
@@ -68,14 +81,13 @@ export async function POST({ request, locals }) {
 
 Notes:
 
-- `objectName()` defines the logical database boundary and must return a non-empty string. It is serialized into the Worker entrypoint, so it must be self-contained and cannot depend on variables from `astro.config`.
+- `d1: true` creates one logical database for the app.
+- `partitionBy: 'hostname'` gives each hostname its own logical database.
+- `writeRoutes` avoids an extra redirect for routes that are known to write.
 - The generated binding and class name are `AstroD1Backend`.
-- D1 read replication is enabled by default. Set `readReplication: false` to opt out.
-- `primaryOnlyRoutes` avoids an extra replica hop for known write-heavy routes.
-- Writes discovered on replicas are rerouted to the primary before SQL runs.
+- Writes discovered while rendering are rerouted before SQL runs.
 - `Astro.locals.cfContext` remains available in D1-rendered routes.
 - Custom Worker entrypoints must re-export `AstroD1Backend` from `@astrojs/cloudflare/entrypoints/server`.
-- D1 read replication currently relies on experimental Durable Objects APIs, so generated Wrangler config includes `compatibility_flags = ["experimental", "replica_routing"]` when `readReplication` is enabled.
 
 ## Support
 
