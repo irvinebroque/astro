@@ -453,6 +453,19 @@ importers:
         specifier: ^6.4.6
         version: link:../../packages/astro
 
+  examples/with-cloudflare-d1:
+    dependencies:
+      '@astrojs/cloudflare':
+        specifier: ^13.7.0
+        version: link:../../packages/integrations/cloudflare
+      astro:
+        specifier: ^6.4.6
+        version: link:../../packages/astro
+    devDependencies:
+      wrangler:
+        specifier: ^4.83.0
+        version: 4.95.0(@cloudflare/workers-types@4.20260527.1)
+
   examples/with-markdoc:
     dependencies:
       '@astrojs/markdoc':

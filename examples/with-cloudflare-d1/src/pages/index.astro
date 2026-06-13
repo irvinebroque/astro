@@ -1,0 +1,38 @@
+---
+export const prerender = false;
+
+Astro.locals.d1.query(`
+	CREATE TABLE IF NOT EXISTS messages (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		text TEXT NOT NULL
+	)
+`);
+
+const existing = Astro.locals.d1.queryOne<{ count: number }>(
+	'SELECT COUNT(*) AS count FROM messages',
+);
+
+if (existing?.count === 0) {
+	Astro.locals.d1.query('INSERT INTO messages (text) VALUES (?)', ['Hello from D1']);
+}
+
+const messages = Astro.locals.d1.query<{ id: number; text: string }>(
+	'SELECT id, text FROM messages ORDER BY id ASC',
+);
+---
+
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<meta name="viewport" content="width=device-width" />
+		<meta name="generator" content={Astro.generator} />
+		<title>Astro D1</title>
+	</head>
+	<body>
+		<h1>Astro D1</h1>
+		<ul>
+			{messages.map((message) => <li>{message.text}</li>)}
+		</ul>
+	</body>
+</html>

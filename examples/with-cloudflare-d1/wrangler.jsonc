@@ -1,0 +1,5 @@
+{
+  "name": "astro-d1-example",
+  "main": "@astrojs/cloudflare/entrypoints/server",
+  "compatibility_date": "2026-01-28"
+}
