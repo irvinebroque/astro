@@ -22,6 +22,11 @@ import {
 import { createConfigPlugin } from './vite-plugin-config.js';
 import { createNodePrerenderPlugin } from './vite-plugin-dev-server-prerender-middleware.js';
 import {
+	type D1Options,
+	normalizeD1BackendService,
+	type D1BackendServiceConfig,
+} from './utils/d1-config.js';
+import {
 	cloudflareConfigCustomizer,
 	DEFAULT_SESSION_KV_BINDING_NAME,
 	DEFAULT_IMAGES_BINDING_NAME,
@@ -54,6 +59,7 @@ function usesCloudflareKVSessionDriver(session: AstroConfig['session']): boolean
 }
 
 export type { Runtime } from './utils/handler.js';
+export type { AstroD1Client } from './utils/d1.js';
 
 function hasContentCollectionsConfig(srcDir: URL) {
 	const contentConfigPaths = [
@@ -105,6 +111,13 @@ export interface Options
 	imagesBindingName?: string;
 
 	/**
+	 * Configures D1 application-object support. When enabled, server-rendered Astro
+	 * routes are routed through a SQLite-backed Durable Object and receive
+	 * `Astro.locals.d1` backed by `ctx.storage.sql`.
+	 */
+	d1?: D1Options;
+
+	/**
 	 * Controls which runtime is used for prerendering static pages at build time.
 	 *
 	 * - `'workerd'` (default): Uses Cloudflare's workerd runtime.
@@ -123,6 +136,7 @@ export default function createIntegration({
 	sessionKVBindingName = DEFAULT_SESSION_KV_BINDING_NAME,
 	imagesBindingName = DEFAULT_IMAGES_BINDING_NAME,
 	prerenderEnvironment = 'workerd',
+	d1,
 	...cloudflareOptions
 }: Options = {}): AstroIntegration {
 	let _config: AstroConfig;
@@ -131,6 +145,7 @@ export default function createIntegration({
 
 	let _routes: IntegrationResolvedRoute[];
 	let cfPluginConfig: PluginConfig;
+	let d1BackendService: D1BackendServiceConfig | null = null;
 
 	const { buildService, runtimeService } = normalizeImageServiceConfig(imageService);
 	const needsImagesBinding = runtimeService === 'cloudflare-binding';
@@ -179,12 +194,15 @@ export default function createIntegration({
 				const usesContentCollections = hasContentCollectionsConfig(config.srcDir);
 				const prebundleContentRuntime = command === 'dev' && usesContentCollections;
 
+				d1BackendService = normalizeD1BackendService(d1);
+
 				const adapterPluginConfig: Partial<PluginConfig> = {
 					config: cloudflareConfigCustomizer({
 						needsSessionKVBinding,
 						sessionKVBindingName,
 						imagesBindingName:
 							needsImagesBinding || needsImagesBindingForDev ? imagesBindingName : false,
+						d1BackendService,
 					}),
 					...(prerenderEnvironment === 'workerd' && {
 						experimental: {
@@ -368,6 +386,7 @@ export default function createIntegration({
 							},
 							createConfigPlugin({
 								sessionKVBindingName,
+								d1BackendService,
 								compileImageConfig:
 									isCompile && command !== 'dev'
 										? {
@@ -415,6 +434,17 @@ export default function createIntegration({
 					filename: 'cloudflare.d.ts',
 					content: '/// <reference types="@astrojs/cloudflare/types.d.ts" />',
 				});
+
+				if (d1BackendService) {
+					injectTypes({
+						filename: 'cloudflare-d1.d.ts',
+						content: `declare namespace App {
+	interface Locals {
+		d1: import('@astrojs/cloudflare').AstroD1Client;
+	}
+}`,
+					});
+				}
 
 				setAdapter({
 					name: '@astrojs/cloudflare',

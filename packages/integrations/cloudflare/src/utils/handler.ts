@@ -1,5 +1,5 @@
 import { env as globalEnv } from 'cloudflare:workers';
-import { compileImageConfig, isPrerender } from 'virtual:astro-cloudflare:config';
+import { compileImageConfig, d1BackendService, isPrerender } from 'virtual:astro-cloudflare:config';
 import type { RenderOptions } from 'astro/app';
 import { createApp } from 'astro/app/entrypoint';
 import { setGetEnv } from 'astro/env/setup';
@@ -22,6 +22,7 @@ import {
 	createLocals,
 	getClientAddress,
 } from './cf.js';
+import { getD1ObjectName, getD1Stub } from './d1.js';
 
 export type { Runtime };
 
@@ -81,7 +82,56 @@ export async function handle(
 		if (asset) return asset as CfResponse;
 	}
 
-	const locals = createLocals(context);
+	if (d1BackendService) {
+		const objectName = getD1ObjectName(d1BackendService, request);
+		const stub = getD1Stub(env, d1BackendService, objectName, request);
+		return stub.fetch(request) as Promise<CfResponse>;
+	}
+
+	return renderMatchedAstroRequest(request, env, context, routeData);
+}
+
+export async function renderAstroRequest(
+	request: Request,
+	env: Env,
+	context: ExecutionContext,
+	localsExtension?: Record<string, unknown>,
+): Promise<CfResponse> {
+	injectSessionBinding(app.manifest, env);
+
+	const staticAsset = matchStaticAsset(app.manifest, request.url, env);
+	if (staticAsset) return staticAsset as CfResponse;
+
+	const routeData = await getRouteData(request);
+
+	if (!routeData) {
+		const asset = await fallbackToAssets(request.url, env);
+		if (asset) return asset as CfResponse;
+	}
+
+	return renderMatchedAstroRequest(request, env, context, routeData, localsExtension);
+}
+
+async function getRouteData(request: Request): Promise<RouteData | undefined> {
+	if (app.isDev()) {
+		const result = await app.devMatch(app.getPathnameFromRequest(request));
+		if (result) {
+			return result.routeData;
+		}
+		return undefined;
+	}
+
+	return app.match(request);
+}
+
+async function renderMatchedAstroRequest(
+	request: Request,
+	env: Env,
+	context: ExecutionContext,
+	routeData: RouteData | undefined,
+	localsExtension?: Record<string, unknown>,
+): Promise<CfResponse> {
+	const locals = createLocals(context, localsExtension);
 	const waitUntil: RenderOptions['waitUntil'] = context.waitUntil.bind(context);
 
 	const response = await app.render(request, {

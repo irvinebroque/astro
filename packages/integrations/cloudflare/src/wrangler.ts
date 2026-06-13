@@ -1,4 +1,8 @@
 import type { PluginConfig, WorkerConfig } from '@cloudflare/vite-plugin';
+import {
+	DEFAULT_D1_BACKEND_MIGRATION_TAG,
+	type D1BackendServiceConfig,
+} from './utils/d1-config.js';
 
 export const DEFAULT_SESSION_KV_BINDING_NAME = 'SESSION';
 export const DEFAULT_IMAGES_BINDING_NAME = 'IMAGES';
@@ -15,9 +19,13 @@ interface CloudflareConfigOptions {
 	sessionKVBindingName?: string | undefined;
 	needsSessionKVBinding?: boolean;
 	imagesBindingName?: string | false | undefined;
+	d1BackendService?: D1BackendServiceConfig | null | undefined;
 }
 
 type KVNamespace = NonNullable<WorkerConfig['kv_namespaces']>[number];
+type DurableObjectBinding = NonNullable<
+	NonNullable<WorkerConfig['durable_objects']>['bindings']
+>[number];
 
 /**
  * Returns a config customizer that sets up the Astro Cloudflare defaults.
@@ -32,6 +40,7 @@ export function cloudflareConfigCustomizer(
 		options?.imagesBindingName === false
 			? undefined
 			: (options?.imagesBindingName ?? DEFAULT_IMAGES_BINDING_NAME);
+	const d1BackendService = options?.d1BackendService ?? null;
 
 	const customizer = (config: Partial<WorkerConfig>): Partial<WorkerConfig> => {
 		const getNonInheritableBindings = (
@@ -57,9 +66,11 @@ export function cloudflareConfigCustomizer(
 		};
 
 		const hasAssetsBinding = config.assets?.binding !== undefined;
+		const d1Config = getD1BackendWorkerConfig(config, d1BackendService);
 
 		return {
 			...getNonInheritableBindings(config),
+			...d1Config,
 			compatibility_date: config.compatibility_date ?? DEFAULT_COMPATIBILITY_DATE,
 			main: config.main ?? '@astrojs/cloudflare/entrypoints/server',
 			assets: hasAssetsBinding
@@ -72,4 +83,45 @@ export function cloudflareConfigCustomizer(
 	};
 
 	return customizer satisfies PluginConfig['config'];
+}
+
+function getD1BackendWorkerConfig(
+	config: Partial<WorkerConfig>,
+	d1BackendService: D1BackendServiceConfig | null,
+): Partial<WorkerConfig> {
+	if (!d1BackendService) {
+		return {};
+	}
+
+	const hasBinding = config.durable_objects?.bindings?.some(
+		(binding: DurableObjectBinding) =>
+			binding.name === d1BackendService.bindingName ||
+			binding.class_name === d1BackendService.className,
+	);
+	const hasMigration = config.migrations?.some((migration) =>
+		migration.new_sqlite_classes?.includes(d1BackendService.className),
+	);
+
+	if (!hasMigration) {
+		config.migrations = [
+			...(config.migrations ?? []),
+			{
+				tag: DEFAULT_D1_BACKEND_MIGRATION_TAG,
+				new_sqlite_classes: [d1BackendService.className],
+			},
+		];
+	}
+
+	return {
+		durable_objects: hasBinding
+			? undefined
+			: {
+					bindings: [
+						{
+							name: d1BackendService.bindingName,
+							class_name: d1BackendService.className,
+						},
+					],
+				},
+	};
 }

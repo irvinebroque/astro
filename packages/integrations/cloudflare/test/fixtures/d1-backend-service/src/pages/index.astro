@@ -1,0 +1,32 @@
+---
+export const prerender = false;
+
+Astro.locals.cfContext.waitUntil(Promise.resolve());
+
+Astro.locals.d1.query(`
+	CREATE TABLE IF NOT EXISTS posts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT NOT NULL
+	)
+`);
+
+const existing = Astro.locals.d1.query<{ count: number }>('SELECT COUNT(*) AS count FROM posts')[0];
+if (existing.count === 0) {
+	Astro.locals.d1.query('INSERT INTO posts (title) VALUES (?)', ['Hello from D1']);
+}
+
+const posts = Astro.locals.d1.query<{ id: number; title: string }>(
+	'SELECT id, title FROM posts ORDER BY id ASC',
+);
+---
+
+<html>
+	<body>
+		<div id="hasD1">{!!Astro.locals.d1}</div>
+		<div id="hasCfContext">{!!Astro.locals.cfContext}</div>
+		<div id="hasWaitUntil">{typeof Astro.locals.cfContext.waitUntil === 'function'}</div>
+		<ul id="posts">
+			{posts.map((post) => <li>{post.title}</li>)}
+		</ul>
+	</body>
+</html>
