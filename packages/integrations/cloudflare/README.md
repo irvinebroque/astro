@@ -79,6 +79,49 @@ export async function POST({ request, locals }) {
 }
 ```
 
+### Content collections
+
+Use `d1LiveLoader()` from `@astrojs/cloudflare/loaders` to expose a D1 table as a live content collection:
+
+```ts
+// src/live.config.ts
+import { d1LiveLoader } from '@astrojs/cloudflare/loaders';
+import { defineLiveCollection } from 'astro:content';
+import { z } from 'astro/zod';
+
+const posts = defineLiveCollection({
+  loader: d1LiveLoader({
+    table: 'posts',
+    columns: ['title', 'body'],
+    orderBy: 'id',
+  }),
+  schema: z.object({
+    id: z.number(),
+    title: z.string(),
+    body: z.string(),
+  }),
+});
+
+export const collections = { posts };
+```
+
+Then pass the request's D1 client from `Astro.locals.d1` when reading live content:
+
+```astro
+---
+import { getLiveEntry } from 'astro:content';
+
+const { entry, error } = await getLiveEntry('posts', {
+  d1: Astro.locals.d1,
+  id: Astro.params.id,
+});
+
+if (error) throw error;
+---
+
+<h1>{entry.data.title}</h1>
+```
+
 Notes:
 
 - `d1: true` creates one logical database for the app.

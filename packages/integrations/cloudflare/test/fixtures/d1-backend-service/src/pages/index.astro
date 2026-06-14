@@ -1,4 +1,6 @@
 ---
+import { getLiveCollection, getLiveEntry } from 'astro:content';
+
 export const prerender = false;
 
 Astro.locals.cfContext.waitUntil(Promise.resolve());
@@ -18,6 +20,21 @@ if (existing.count === 0) {
 const posts = Astro.locals.d1.query<{ id: number; title: string }>(
 	'SELECT id, title FROM posts ORDER BY id ASC',
 );
+
+const { entries: contentPosts, error: contentPostsError } = await getLiveCollection('posts', {
+	d1: Astro.locals.d1,
+});
+if (contentPostsError) {
+	throw contentPostsError;
+}
+
+const { entry: contentPost, error: contentPostError } = await getLiveEntry('posts', {
+	d1: Astro.locals.d1,
+	id: posts[0].id,
+});
+if (contentPostError) {
+	throw contentPostError;
+}
 ---
 
 <html>
@@ -28,5 +45,9 @@ const posts = Astro.locals.d1.query<{ id: number; title: string }>(
 		<ul id="posts">
 			{posts.map((post) => <li>{post.title}</li>)}
 		</ul>
+		<ul id="contentPosts">
+			{contentPosts.map((post) => <li>{post.data.title}</li>)}
+		</ul>
+		<div id="contentPost">{contentPost.data.title}</div>
 	</body>
 </html>
