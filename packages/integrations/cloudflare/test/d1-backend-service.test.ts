@@ -40,6 +40,8 @@ describe('D1 backend service', () => {
 		assert.equal($('#hasCfContext').text(), 'true');
 		assert.equal($('#hasWaitUntil').text(), 'true');
 		assert.equal($('#posts li').first().text(), 'Hello from D1');
+		assert.equal($('#contentPosts li').first().text(), 'Hello from D1');
+		assert.equal($('#contentPost').text(), 'Hello from D1');
 	});
 
 	it('writes from an Astro endpoint through locals.d1', async () => {
