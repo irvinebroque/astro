@@ -3,9 +3,23 @@ import { describe, it } from 'node:test';
 import {
 	cloudflareConfigCustomizer,
 	DEFAULT_ASSETS_BINDING_NAME,
+	D1_BACKEND_COMPATIBILITY_FLAGS,
 	DEFAULT_IMAGES_BINDING_NAME,
 	DEFAULT_SESSION_KV_BINDING_NAME,
 } from '../dist/wrangler.js';
+import { DEFAULT_D1_BACKEND_MIGRATION_TAG } from '../dist/utils/d1-config.js';
+
+const d1BackendService = {
+	bindingName: 'AstroD1Backend',
+	className: 'AstroD1Backend',
+	objectName: () => 'site:example.com',
+	readReplication: null,
+	primaryOnlyRoutes: [],
+};
+const readReplicatedD1BackendService = {
+	...d1BackendService,
+	readReplication: { mode: 'auto' as const },
+};
 
 describe('cloudflareConfigCustomizer', () => {
 	describe('main entrypoint', () => {
@@ -143,6 +157,148 @@ describe('cloudflareConfigCustomizer', () => {
 			});
 
 			assert.equal(result.assets, undefined);
+		});
+	});
+
+	describe('D1 backend service Durable Object', () => {
+		it('adds Durable Object binding and SQLite migration when none exists', () => {
+			const customizer = cloudflareConfigCustomizer({ d1BackendService });
+			const config: any = {};
+			const result = customizer(config);
+
+			assert.deepEqual(result.durable_objects, {
+				bindings: [{ name: 'AstroD1Backend', class_name: 'AstroD1Backend' }],
+			});
+			assert.deepEqual(config.migrations, [
+				{
+					tag: DEFAULT_D1_BACKEND_MIGRATION_TAG,
+					new_sqlite_classes: ['AstroD1Backend'],
+				},
+			]);
+		});
+
+		it('does not add D1 Durable Object config when D1 backend service is disabled', () => {
+			const customizer = cloudflareConfigCustomizer();
+			const result = customizer({});
+
+			assert.equal(result.durable_objects, undefined);
+			assert.equal(result.migrations, undefined);
+		});
+
+		it('adds D1 compatibility flags when read replication is enabled', () => {
+			const customizer = cloudflareConfigCustomizer({
+				d1BackendService: readReplicatedD1BackendService,
+			});
+			const result = customizer({});
+
+			assert.deepEqual(result.compatibility_flags, D1_BACKEND_COMPATIBILITY_FLAGS);
+		});
+
+		it('adds only missing D1 compatibility flags when read replication and user flags exist', () => {
+			const customizer = cloudflareConfigCustomizer({
+				d1BackendService: readReplicatedD1BackendService,
+			});
+			const result = customizer({
+				compatibility_flags: ['nodejs_compat', 'experimental'],
+			});
+
+			assert.deepEqual(result.compatibility_flags, ['replica_routing']);
+		});
+
+		it('does not add duplicate Durable Object binding when binding already exists', () => {
+			const customizer = cloudflareConfigCustomizer({ d1BackendService });
+			const result = customizer({
+				durable_objects: {
+					bindings: [{ name: 'AstroD1Backend', class_name: 'AstroD1Backend' }],
+				},
+			});
+
+			assert.equal(result.durable_objects, undefined);
+		});
+
+		it('rejects mismatched Durable Object bindings that collide with the generated binding', () => {
+			const customizer = cloudflareConfigCustomizer({ d1BackendService });
+
+			assert.throws(
+				() =>
+					customizer({
+						durable_objects: {
+							bindings: [{ name: 'AstroD1Backend', class_name: 'OtherObject' }],
+						},
+					}),
+				/must use both name "AstroD1Backend" and class_name "AstroD1Backend"/,
+			);
+			assert.throws(
+				() =>
+					customizer({
+						durable_objects: {
+							bindings: [{ name: 'OTHER', class_name: 'AstroD1Backend' }],
+						},
+					}),
+				/must use both name "AstroD1Backend" and class_name "AstroD1Backend"/,
+			);
+		});
+
+		it('returns only the generated Durable Object binding when other bindings exist', () => {
+			const customizer = cloudflareConfigCustomizer({ d1BackendService });
+			const result = customizer({
+				durable_objects: {
+					bindings: [{ name: 'OTHER', class_name: 'OtherDurableObject' }],
+				},
+			});
+
+			assert.deepEqual(result.durable_objects, {
+				bindings: [{ name: 'AstroD1Backend', class_name: 'AstroD1Backend' }],
+			});
+		});
+
+		it('adds the SQLite migration after user migrations', () => {
+			const customizer = cloudflareConfigCustomizer({ d1BackendService });
+			const config = {
+				migrations: [{ tag: 'v1', new_sqlite_classes: ['ExistingObject'] }],
+			};
+			customizer(config);
+
+			assert.deepEqual(config.migrations, [
+				{ tag: 'v1', new_sqlite_classes: ['ExistingObject'] },
+				{
+					tag: DEFAULT_D1_BACKEND_MIGRATION_TAG,
+					new_sqlite_classes: ['AstroD1Backend'],
+				},
+			]);
+		});
+
+		it('adds the SQLite migration when normalized migrations are empty', () => {
+			const customizer = cloudflareConfigCustomizer({ d1BackendService });
+			const config = { migrations: [] };
+			customizer(config);
+
+			assert.deepEqual(config.migrations, [
+				{
+					tag: DEFAULT_D1_BACKEND_MIGRATION_TAG,
+					new_sqlite_classes: ['AstroD1Backend'],
+				},
+			]);
+		});
+
+		it('does not add a duplicate SQLite migration when one already exists', () => {
+			const customizer = cloudflareConfigCustomizer({ d1BackendService });
+			const config = {
+				migrations: [
+					{
+						tag: DEFAULT_D1_BACKEND_MIGRATION_TAG,
+						new_sqlite_classes: ['AstroD1Backend'],
+					},
+				],
+			};
+			customizer(config);
+
+			assert.deepEqual(config.migrations, [
+				{
+					tag: DEFAULT_D1_BACKEND_MIGRATION_TAG,
+					new_sqlite_classes: ['AstroD1Backend'],
+				},
+			]);
 		});
 	});
 

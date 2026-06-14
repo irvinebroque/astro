@@ -9,6 +9,8 @@ export interface Runtime {
 	cfContext: ExecutionContext;
 }
 
+type LocalsExtension = Record<string, unknown>;
+
 /** Minimal manifest shape needed by the Cloudflare helpers. */
 export interface ManifestLike {
 	assets: Set<string>;
@@ -61,10 +63,16 @@ export function createErrorPageFetch(env: Env): (url: string) => Promise<Respons
  * Creates the Cloudflare-specific locals object with `cfContext`
  * and deprecated `runtime` property getters.
  */
-export function createLocals(ctx: ExecutionContext): Runtime {
+export function createLocals<TLocalsExtension extends LocalsExtension = LocalsExtension>(
+	ctx: ExecutionContext,
+	extension?: TLocalsExtension,
+): Runtime & TLocalsExtension {
 	const locals: Runtime = {
 		cfContext: ctx,
 	};
+	if (extension) {
+		Object.assign(locals, extension);
+	}
 	Object.defineProperty(locals, 'runtime', {
 		enumerable: false,
 		value: {
@@ -90,7 +98,7 @@ export function createLocals(ctx: ExecutionContext): Runtime {
 			},
 		},
 	});
-	return locals;
+	return locals as Runtime & TLocalsExtension;
 }
 
 /**

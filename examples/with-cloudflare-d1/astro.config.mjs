@@ -1,0 +1,10 @@
+// @ts-check
+import cloudflare from '@astrojs/cloudflare';
+import { defineConfig } from 'astro/config';
+
+export default defineConfig({
+	adapter: cloudflare({
+		d1: true,
+	}),
+	output: 'server',
+});

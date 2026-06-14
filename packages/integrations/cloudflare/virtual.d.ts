@@ -4,6 +4,7 @@
 declare module 'virtual:astro-cloudflare:config' {
 	export const sessionKVBindingName: string;
 	export const compileImageConfig: import('./src/vite-plugin-config.js').CompileImageConfig | null;
+	export const d1BackendService: import('./src/utils/d1-config.js').D1BackendServiceConfig | null;
 	export const isPrerender: boolean;
 }
 
